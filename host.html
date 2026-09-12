@@ -20,29 +20,44 @@
   </section>
 
   <section class="panel">
+    <h2>🗂️ 卡片名單設定</h2>
+    <p style="color:var(--muted); font-size:0.9rem;">
+      先把活動現場實際發出去的每一張皮克敏身分卡（種類＋數字）登錄在這裡，
+      之後「自動出題」才知道還剩下哪些卡片可以出題、保證每一輪都找得到符合條件的同學。
+    </p>
+
+    <div class="field-row">
+      <label>單張新增</label>
+      <select id="addCardType"></select>
+      <input type="number" id="addCardNumber" min="1" max="9" value="1" style="width:60px;" />
+      <button class="btn" id="addCardBtn">＋ 新增這張卡</button>
+    </div>
+
+    <div class="field-row" style="flex-direction:column; align-items:stretch;">
+      <label>批次匯入（一行一張，格式「種類,數字」，種類可用中文名或代碼 red/yellow/blue/white/purple/rock/wing）</label>
+      <textarea id="bulkImportText" placeholder="紅,2&#10;紅,7&#10;yellow,5&#10;藍,9"></textarea>
+      <div class="btn-row">
+        <button class="btn" id="bulkImportBtn">📥 加入這些卡片</button>
+      </div>
+    </div>
+
+    <div class="field-row" id="rosterSummary" style="flex-wrap:wrap;"></div>
+
+    <div class="history-list" id="rosterList" style="max-height:220px;"></div>
+
+    <div class="btn-row">
+      <button class="btn danger" id="clearRosterBtn">⚠️ 清空整份卡片名單</button>
+    </div>
+  </section>
+
+  <section class="panel">
     <h2>📣 出題設定</h2>
 
     <div class="field-row">
       <label>出題方式</label>
       <div class="mode-toggle">
-        <button type="button" id="modeSpecificBtn" class="active">依指定種類＋數量</button>
+        <button type="button" id="modeSpecificBtn" class="active">依剩餘卡片自動配種類</button>
         <button type="button" id="modeAnyBtn">任選不同種類</button>
-      </div>
-    </div>
-
-    <div id="specificModePanel">
-      <div class="field-row"><label>需要的種類與隻數</label></div>
-      <div class="type-count-grid" id="typeCountGrid"></div>
-    </div>
-
-    <div id="anyModePanel" style="display:none;">
-      <div class="field-row">
-        <label>需要幾隻不同種類</label>
-        <div class="stepper" data-stepper="anyCount">
-          <button type="button" data-delta="-1">－</button>
-          <span>3</span>
-          <button type="button" data-delta="1">＋</button>
-        </div>
       </div>
     </div>
 
@@ -54,7 +69,7 @@
         <option value="gte">加總至少為</option>
         <option value="lte">加總最多為</option>
       </select>
-      <input type="number" id="conditionValue" value="10" min="1" max="99" style="width:70px;" />
+      <span style="color:var(--muted); font-size:0.85rem;">（數值會依自動挑出的卡片自動算好，不用手動輸入）</span>
     </div>
 
     <div class="field-row">
@@ -64,22 +79,22 @@
         <span>5</span>
         <button type="button" data-delta="1">＋</button>
       </div>
-      <span style="color:var(--muted); font-size:0.85rem;">（最多可上台人數，可依人數彈性調整）</span>
+      <span style="color:var(--muted); font-size:0.85rem;">（這一輪需要幾張卡片／幾人上台，系統會自動挑選）</span>
     </div>
 
-    <div class="field-row" style="flex-direction:column; align-items:stretch;">
-      <label>自動產生的敘述（預覽）</label>
-      <div class="sentence-preview" id="sentencePreview">請先設定條件</div>
+    <div class="btn-row">
+      <button class="btn" id="autoGenerateBtn">🎲 自動產生任務</button>
+      <button class="btn secondary" id="rerollBtn">🔁 重新隨機一次</button>
     </div>
 
-    <div class="field-row" style="flex-direction:column; align-items:stretch;">
-      <label>自訂敘述（選填，填了就會取代上面的自動敘述）</label>
-      <textarea id="customSentence" placeholder="例如：這一輪找 2 隻紅色皮克敏，力量值加起來要剛好 10 分，找到的同學快上台！"></textarea>
+    <div class="field-row" style="flex-direction:column; align-items:stretch; margin-top:12px;">
+      <label>本輪敘述（預覽，可直接編輯微調文字）</label>
+      <textarea id="sentenceEditor" placeholder="按上面「自動產生任務」後會出現在這裡，也可以直接手動修改文字"></textarea>
     </div>
 
     <div class="btn-row">
       <button class="btn" id="publishBtn">🚀 發布本輪任務</button>
-      <button class="btn secondary" id="nextRoundBtn">🔁 沿用敘述、開下一輪（重算名額）</button>
+      <button class="btn secondary" id="nextRoundBtn">↻ 沿用目前敘述、重算本輪名額</button>
     </div>
   </section>
 

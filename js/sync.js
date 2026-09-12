@@ -12,7 +12,9 @@
 //   Sync.pushItem(path, value)           -> 新增一筆到清單（例如回報紀錄）
 //   Sync.onList(path, cb)                -> 監聽清單，回傳陣列（依時間排序）
 //   Sync.removeLastItem(path)            -> 撤銷清單最後一筆
+//   Sync.removeListItem(path, id)        -> 移除清單中指定 _id 的那一筆
 //   Sync.clearList(path)                 -> 清空整個清單
+//   Sync.setList(path, arrayOfValues)    -> 整批覆寫清單（例如匯入卡片名單）
 window.Sync = (function () {
   var mode = "local";
   var db = null;
@@ -171,6 +173,39 @@ window.Sync = (function () {
     return Promise.resolve();
   }
 
+  function removeListItem(path, id) {
+    if (mode === "firebase") {
+      return db.ref(path + "/" + id).remove();
+    }
+    var key = storageKey(path);
+    var arr = JSON.parse(localStorage.getItem(key) || "[]");
+    var next = arr.filter(function (item) {
+      return item._id !== id;
+    });
+    localStorage.setItem(key, JSON.stringify(next));
+    broadcastLocal(path, next);
+    return Promise.resolve();
+  }
+
+  function setList(path, arrayOfValues) {
+    if (mode === "firebase") {
+      var updates = {};
+      arrayOfValues.forEach(function (item) {
+        var ref = db.ref(path).push();
+        updates[ref.key] = Object.assign({}, item, { _id: ref.key });
+      });
+      return db.ref(path).set(updates);
+    }
+    var arr = arrayOfValues.map(function (item, i) {
+      return Object.assign({}, item, {
+        _id: "local-" + Date.now() + "-" + i + "-" + Math.random().toString(36).slice(2, 6)
+      });
+    });
+    localStorage.setItem(storageKey(path), JSON.stringify(arr));
+    broadcastLocal(path, arr);
+    return Promise.resolve(arr);
+  }
+
   return {
     init: init,
     getMode: getMode,
@@ -179,6 +214,8 @@ window.Sync = (function () {
     pushItem: pushItem,
     onList: onList,
     removeLastItem: removeLastItem,
-    clearList: clearList
+    removeListItem: removeListItem,
+    clearList: clearList,
+    setList: setList
   };
 })();

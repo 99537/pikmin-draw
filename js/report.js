@@ -1,7 +1,9 @@
 (function () {
   var currentTask = null;
   var logList = [];
-  var usedSet = {};
+  var roster = [];
+  var rosterCount = {};
+  var usedCount = {};
 
   var pikminGrid = document.getElementById("pikminGrid");
   var roundSentence = document.getElementById("roundSentence");
@@ -23,6 +25,13 @@
     return typeId + "_" + number;
   }
 
+  function remainingOf(typeId, number) {
+    var key = cardKey(typeId, number);
+    var total = rosterCount[key] || 0;
+    var used = usedCount[key] || 0;
+    return Math.max(0, total - used);
+  }
+
   function renderLegend() {
     legend.innerHTML = "";
     window.PIKMIN_TYPES.forEach(function (t) {
@@ -34,6 +43,9 @@
       span.appendChild(document.createTextNode(t.name));
       legend.appendChild(span);
     });
+    var note = document.createElement("span");
+    note.textContent = "按鍵右上角的數字＝這張卡還剩幾張沒被叫過；淺色虛線＝名單裡沒有登錄這張卡";
+    legend.appendChild(note);
   }
 
   function renderGrid() {
@@ -60,10 +72,19 @@
         (function (num) {
           var btn = document.createElement("button");
           btn.className = "pikmin-card-btn";
-          btn.textContent = num;
+          btn.style.position = "relative";
           btn.style.background = t.color;
           btn.style.color = t.text;
           btn.dataset.key = cardKey(t.id, num);
+
+          var label2 = document.createElement("span");
+          label2.textContent = num;
+          btn.appendChild(label2);
+
+          var badge = document.createElement("span");
+          badge.className = "remain-badge";
+          btn.appendChild(badge);
+
           btn.addEventListener("click", function () {
             handleCardClick(t.id, num, btn);
           });
@@ -82,23 +103,36 @@
     var buttons = pikminGrid.querySelectorAll(".pikmin-card-btn");
     buttons.forEach(function (btn) {
       var key = btn.dataset.key;
-      if (usedSet[key]) {
+      var lastUnderscore = key.lastIndexOf("_");
+      var typeId = key.slice(0, lastUnderscore);
+      var number = parseInt(key.slice(lastUnderscore + 1), 10);
+      var total = rosterCount[key] || 0;
+      var remain = remainingOf(typeId, number);
+      var badge = btn.querySelector(".remain-badge");
+
+      btn.classList.remove("used", "not-in-roster");
+      if (total === 0) {
+        btn.classList.add("not-in-roster");
+        btn.disabled = true;
+        badge.textContent = "";
+      } else if (remain <= 0) {
         btn.classList.add("used");
         btn.disabled = true;
+        badge.textContent = "";
       } else {
-        btn.classList.remove("used");
         btn.disabled = false;
+        badge.textContent = total > 1 ? "×" + remain : "";
       }
     });
   }
 
   function handleCardClick(typeId, number, btn) {
-    var key = cardKey(typeId, number);
-    if (usedSet[key]) return;
+    if (remainingOf(typeId, number) <= 0) return;
 
-    // 樂觀更新：先在畫面上變灰，避免重複點擊
-    btn.classList.add("used");
-    btn.disabled = true;
+    // 樂觀更新：先在畫面上扣一張，避免重複點擊
+    var key = cardKey(typeId, number);
+    usedCount[key] = (usedCount[key] || 0) + 1;
+    applyUsedState();
 
     var entry = {
       typeId: typeId,
@@ -127,6 +161,19 @@
     });
   });
 
+  function recompute() {
+    rosterCount = {};
+    roster.forEach(function (c) {
+      var k = cardKey(c.typeId, c.number);
+      rosterCount[k] = (rosterCount[k] || 0) + 1;
+    });
+    usedCount = {};
+    logList.forEach(function (e) {
+      var k = cardKey(e.typeId, e.number);
+      usedCount[k] = (usedCount[k] || 0) + 1;
+    });
+  }
+
   function render() {
     if (!currentTask) {
       roundSentence.textContent = "尚未發布任務";
@@ -138,10 +185,7 @@
       });
       roundProgressText.textContent = thisRound.length + " / " + currentTask.maxPeople + " 人已上台";
     }
-    usedSet = {};
-    logList.forEach(function (e) {
-      usedSet[cardKey(e.typeId, e.number)] = true;
-    });
+    recompute();
     applyUsedState();
   }
 
@@ -159,6 +203,10 @@
   });
   Sync.onList("log", function (arr) {
     logList = arr;
+    render();
+  });
+  Sync.onList("roster", function (arr) {
+    roster = arr;
     render();
   });
 })();

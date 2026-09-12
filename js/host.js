@@ -1,34 +1,36 @@
 (function () {
   var state = {
-    mode: "specific", // "specific" | "any"
-    counts: {}, // typeId -> count (specific mode)
-    anyCount: 3,
+    mode: "specific", // "specific"（依剩餘卡片自動配種類） | "any"（任選不同種類）
     condition: "eq", // none | eq | gte | lte
-    conditionValue: 10,
     maxPeople: 5
   };
 
-  window.PIKMIN_TYPES.forEach(function (t) {
-    state.counts[t.id] = 0;
-  });
-
   var currentTask = null;
   var logList = [];
+  var roster = [];
+  var pendingPicked = null; // 最近一次自動產生、尚未發布的卡片組合
 
   // ---- DOM refs ----
-  var typeCountGrid = document.getElementById("typeCountGrid");
-  var specificModePanel = document.getElementById("specificModePanel");
-  var anyModePanel = document.getElementById("anyModePanel");
+  var addCardType = document.getElementById("addCardType");
+  var addCardNumber = document.getElementById("addCardNumber");
+  var addCardBtn = document.getElementById("addCardBtn");
+  var bulkImportText = document.getElementById("bulkImportText");
+  var bulkImportBtn = document.getElementById("bulkImportBtn");
+  var rosterSummary = document.getElementById("rosterSummary");
+  var rosterList = document.getElementById("rosterList");
+  var clearRosterBtn = document.getElementById("clearRosterBtn");
+
   var modeSpecificBtn = document.getElementById("modeSpecificBtn");
   var modeAnyBtn = document.getElementById("modeAnyBtn");
   var conditionSelect = document.getElementById("conditionSelect");
-  var conditionValueInput = document.getElementById("conditionValue");
-  var sentencePreview = document.getElementById("sentencePreview");
-  var customSentence = document.getElementById("customSentence");
+  var autoGenerateBtn = document.getElementById("autoGenerateBtn");
+  var rerollBtn = document.getElementById("rerollBtn");
+  var sentenceEditor = document.getElementById("sentenceEditor");
   var publishBtn = document.getElementById("publishBtn");
   var nextRoundBtn = document.getElementById("nextRoundBtn");
   var undoBtn = document.getElementById("undoBtn");
   var resetAllBtn = document.getElementById("resetAllBtn");
+
   var roundSentence = document.getElementById("roundSentence");
   var roundProgressBar = document.getElementById("roundProgressBar");
   var roundProgressText = document.getElementById("roundProgressText");
@@ -45,98 +47,168 @@
     }, 1800);
   }
 
-  // ---- 出題種類數量格 ----
-  function renderTypeCountGrid() {
-    typeCountGrid.innerHTML = "";
-    window.PIKMIN_TYPES.forEach(function (t) {
-      var item = document.createElement("div");
-      item.className = "type-count-item";
-
-      var swatch = document.createElement("span");
-      swatch.className = "type-swatch";
-      swatch.style.background = t.color;
-
-      var name = document.createElement("span");
-      name.className = "type-name";
-      name.textContent = t.name;
-
-      var stepper = document.createElement("div");
-      stepper.className = "stepper";
-
-      var minus = document.createElement("button");
-      minus.type = "button";
-      minus.textContent = "－";
-      var valueSpan = document.createElement("span");
-      valueSpan.textContent = state.counts[t.id];
-      var plus = document.createElement("button");
-      plus.type = "button";
-      plus.textContent = "＋";
-
-      minus.addEventListener("click", function () {
-        state.counts[t.id] = Math.max(0, state.counts[t.id] - 1);
-        valueSpan.textContent = state.counts[t.id];
-        updatePreview();
-      });
-      plus.addEventListener("click", function () {
-        state.counts[t.id] = Math.min(9, state.counts[t.id] + 1);
-        valueSpan.textContent = state.counts[t.id];
-        updatePreview();
-      });
-
-      stepper.appendChild(minus);
-      stepper.appendChild(valueSpan);
-      stepper.appendChild(plus);
-
-      item.appendChild(swatch);
-      item.appendChild(name);
-      item.appendChild(stepper);
-      typeCountGrid.appendChild(item);
-    });
+  function cardKey(typeId, number) {
+    return typeId + "_" + number;
   }
 
-  // ---- 通用 stepper（任選種類數 / 名額）----
-  document.querySelectorAll("[data-stepper]").forEach(function (el) {
-    var key = el.getAttribute("data-stepper");
-    var span = el.querySelector("span");
-    el.querySelectorAll("button").forEach(function (btn) {
-      btn.addEventListener("click", function () {
-        var delta = parseInt(btn.getAttribute("data-delta"), 10);
-        var min = key === "maxPeople" ? 1 : 1;
-        var max = key === "maxPeople" ? 5 : 7;
-        state[key] = Math.max(min, Math.min(max, state[key] + delta));
-        span.textContent = state[key];
-        updatePreview();
-      });
+  // ---- 種類下拉選單 ----
+  window.PIKMIN_TYPES.forEach(function (t) {
+    var opt = document.createElement("option");
+    opt.value = t.id;
+    opt.textContent = t.name;
+    addCardType.appendChild(opt);
+  });
+
+  // ---- 卡片名單設定 ----
+  function parseTypeInput(raw) {
+    var s = raw.trim().toLowerCase();
+    var byId = window.PIKMIN_TYPES.find(function (t) {
+      return t.id === s;
+    });
+    if (byId) return byId.id;
+    var byName = window.PIKMIN_TYPES.find(function (t) {
+      return t.name === raw.trim() || t.name.replace("皮克敏", "") === raw.trim();
+    });
+    return byName ? byName.id : null;
+  }
+
+  addCardBtn.addEventListener("click", function () {
+    var typeId = addCardType.value;
+    var number = parseInt(addCardNumber.value, 10);
+    if (!typeId || !number || number < 1 || number > 9) {
+      showToast("請選擇種類並輸入 1-9 的數字");
+      return;
+    }
+    Sync.pushItem("roster", { typeId: typeId, number: number, timestamp: Date.now() }).then(function () {
+      showToast("已新增一張卡片");
     });
   });
 
+  bulkImportBtn.addEventListener("click", function () {
+    var lines = bulkImportText.value.split("\n").map(function (l) {
+      return l.trim();
+    }).filter(function (l) {
+      return l.length > 0;
+    });
+    if (lines.length === 0) {
+      showToast("請先貼上要匯入的卡片清單");
+      return;
+    }
+    var toAdd = [];
+    var errors = [];
+    lines.forEach(function (line, idx) {
+      var parts = line.split(/[,，\s]+/).filter(Boolean);
+      if (parts.length < 2) {
+        errors.push("第 " + (idx + 1) + " 行格式錯誤：" + line);
+        return;
+      }
+      var typeId = parseTypeInput(parts[0]);
+      var number = parseInt(parts[1], 10);
+      if (!typeId || !number || number < 1 || number > 9) {
+        errors.push("第 " + (idx + 1) + " 行無法辨識：" + line);
+        return;
+      }
+      toAdd.push({ typeId: typeId, number: number, timestamp: Date.now() });
+    });
+    if (toAdd.length > 0) {
+      Promise.all(toAdd.map(function (item) {
+        return Sync.pushItem("roster", item);
+      })).then(function () {
+        showToast("已加入 " + toAdd.length + " 張卡片" + (errors.length ? "，" + errors.length + " 行有誤" : ""));
+        bulkImportText.value = errors.length ? errors.join("\n") : "";
+      });
+    } else {
+      showToast("沒有任何一行能辨識，請檢查格式");
+    }
+  });
+
+  clearRosterBtn.addEventListener("click", function () {
+    if (!confirm("確定要清空整份卡片名單嗎？（不會影響已經回報過的紀錄）")) return;
+    Sync.clearList("roster").then(function () {
+      showToast("已清空卡片名單");
+    });
+  });
+
+  function renderRoster() {
+    var total = roster.length;
+    var byType = {};
+    roster.forEach(function (c) {
+      byType[c.typeId] = (byType[c.typeId] || 0) + 1;
+    });
+
+    rosterSummary.innerHTML = "";
+    var totalSpan = document.createElement("span");
+    totalSpan.style.fontWeight = "700";
+    totalSpan.textContent = "總共 " + total + " 張卡片：";
+    rosterSummary.appendChild(totalSpan);
+    window.PIKMIN_TYPES.forEach(function (t) {
+      if (!byType[t.id]) return;
+      var chip = document.createElement("span");
+      chip.className = "card-chip";
+      chip.style.background = t.color;
+      chip.style.color = t.text;
+      chip.innerHTML = '<span class="dot"></span>' + t.name + " × " + byType[t.id];
+      rosterSummary.appendChild(chip);
+    });
+
+    if (roster.length === 0) {
+      rosterList.innerHTML = '<p style="color:var(--muted);">尚未登錄任何卡片</p>';
+      return;
+    }
+    rosterList.innerHTML = "";
+    var wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.flexWrap = "wrap";
+    wrap.style.gap = "6px";
+    roster
+      .slice()
+      .sort(function (a, b) {
+        return (a.timestamp || 0) - (b.timestamp || 0);
+      })
+      .forEach(function (c) {
+        var t = window.getPikminType(c.typeId);
+        var chip = document.createElement("span");
+        chip.className = "card-chip";
+        chip.style.background = t ? t.color : "#ccc";
+        chip.style.color = t ? t.text : "#000";
+        chip.style.cursor = "pointer";
+        chip.title = "點一下移除這張卡";
+        chip.innerHTML = '<span class="dot"></span>' + (t ? t.name : c.typeId) + " " + c.number + " ✕";
+        chip.addEventListener("click", function () {
+          Sync.removeListItem("roster", c._id);
+        });
+        wrap.appendChild(chip);
+      });
+    rosterList.appendChild(wrap);
+  }
+
+  // ---- 出題方式 / 條件 / 名額 ----
   modeSpecificBtn.addEventListener("click", function () {
     state.mode = "specific";
     modeSpecificBtn.classList.add("active");
     modeAnyBtn.classList.remove("active");
-    specificModePanel.style.display = "";
-    anyModePanel.style.display = "none";
-    updatePreview();
   });
 
   modeAnyBtn.addEventListener("click", function () {
     state.mode = "any";
     modeAnyBtn.classList.add("active");
     modeSpecificBtn.classList.remove("active");
-    specificModePanel.style.display = "none";
-    anyModePanel.style.display = "";
-    updatePreview();
   });
 
   conditionSelect.addEventListener("change", function () {
     state.condition = conditionSelect.value;
-    conditionValueInput.disabled = state.condition === "none";
-    updatePreview();
   });
 
-  conditionValueInput.addEventListener("input", function () {
-    state.conditionValue = parseInt(conditionValueInput.value, 10) || 0;
-    updatePreview();
+  document.querySelectorAll("[data-stepper]").forEach(function (el) {
+    var key = el.getAttribute("data-stepper");
+    var span = el.querySelector("span");
+    el.querySelectorAll("button").forEach(function (btn) {
+      btn.addEventListener("click", function () {
+        var delta = parseInt(btn.getAttribute("data-delta"), 10);
+        state[key] = Math.max(1, Math.min(5, state[key] + delta));
+        span.textContent = state[key];
+      });
+    });
   });
 
   var conditionTextMap = {
@@ -145,31 +217,104 @@
     lte: "力量值加總最多為"
   };
 
-  function buildSentence() {
-    if (state.mode === "specific") {
-      var parts = window.PIKMIN_TYPES.filter(function (t) {
-        return state.counts[t.id] > 0;
-      }).map(function (t) {
-        return state.counts[t.id] + " 隻" + t.name;
-      });
-      if (parts.length === 0) return "";
-      var s = "需要 " + parts.join("＋");
-      if (state.condition !== "none") {
-        s += "，" + conditionTextMap[state.condition] + " " + state.conditionValue;
+  // ---- 依剩餘卡片自動出題 ----
+  function buildAvailablePool() {
+    var usedCount = {};
+    logList.forEach(function (e) {
+      var k = cardKey(e.typeId, e.number);
+      usedCount[k] = (usedCount[k] || 0) + 1;
+    });
+    var rosterCount = {};
+    roster.forEach(function (c) {
+      var k = cardKey(c.typeId, c.number);
+      rosterCount[k] = (rosterCount[k] || 0) + 1;
+    });
+    var pool = [];
+    Object.keys(rosterCount).forEach(function (k) {
+      var remain = rosterCount[k] - (usedCount[k] || 0);
+      var lastUnderscore = k.lastIndexOf("_");
+      var typeId = k.slice(0, lastUnderscore);
+      var number = parseInt(k.slice(lastUnderscore + 1), 10);
+      for (var i = 0; i < remain; i++) {
+        pool.push({ typeId: typeId, number: number });
       }
-      return s + "，符合的同學請上台！";
-    }
-    var s2 = "需要 " + state.anyCount + " 隻不同種類的皮克敏";
-    if (state.condition !== "none") {
-      s2 += "，" + conditionTextMap[state.condition] + " " + state.conditionValue;
-    }
-    return s2 + "，符合的同學請上台！";
+    });
+    return pool;
   }
 
-  function updatePreview() {
-    var s = buildSentence();
-    sentencePreview.textContent = s || "請先設定條件";
+  function shuffle(arr) {
+    var a = arr.slice();
+    for (var i = a.length - 1; i > 0; i--) {
+      var j = Math.floor(Math.random() * (i + 1));
+      var tmp = a[i];
+      a[i] = a[j];
+      a[j] = tmp;
+    }
+    return a;
   }
+
+  function pickCards(pool, count, distinctTypes) {
+    var shuffled = shuffle(pool);
+    if (!distinctTypes) {
+      if (shuffled.length < count) return null;
+      return shuffled.slice(0, count);
+    }
+    var picked = [];
+    var usedTypes = {};
+    for (var i = 0; i < shuffled.length && picked.length < count; i++) {
+      var c = shuffled[i];
+      if (!usedTypes[c.typeId]) {
+        usedTypes[c.typeId] = true;
+        picked.push(c);
+      }
+    }
+    return picked.length === count ? picked : null;
+  }
+
+  function sentenceFromPicked(picked) {
+    var sum = picked.reduce(function (s, c) {
+      return s + c.number;
+    }, 0);
+    var s;
+    if (state.mode === "specific") {
+      var countsByType = {};
+      picked.forEach(function (c) {
+        countsByType[c.typeId] = (countsByType[c.typeId] || 0) + 1;
+      });
+      var parts = window.PIKMIN_TYPES.filter(function (t) {
+        return countsByType[t.id];
+      }).map(function (t) {
+        return countsByType[t.id] + " 隻" + t.name;
+      });
+      s = "需要 " + parts.join("＋");
+    } else {
+      s = "需要 " + picked.length + " 隻不同種類的皮克敏";
+    }
+    if (state.condition !== "none") {
+      s += "，" + conditionTextMap[state.condition] + " " + sum;
+    }
+    return s + "，符合的同學請上台！";
+  }
+
+  function autoGenerate() {
+    var pool = buildAvailablePool();
+    var picked = pickCards(pool, state.maxPeople, state.mode === "any");
+    if (!picked) {
+      pendingPicked = null;
+      sentenceEditor.value = "";
+      showToast(
+        state.mode === "any"
+          ? "剩餘卡片不足 " + state.maxPeople + " 種不同種類，請減少名額或補登卡片"
+          : "剩餘卡片不足 " + state.maxPeople + " 張，請減少名額或補登卡片"
+      );
+      return;
+    }
+    pendingPicked = picked;
+    sentenceEditor.value = sentenceFromPicked(picked);
+  }
+
+  autoGenerateBtn.addEventListener("click", autoGenerate);
+  rerollBtn.addEventListener("click", autoGenerate);
 
   // ---- 發布任務 ----
   function makeRoundId() {
@@ -178,11 +323,11 @@
 
   function publishTask(reuseSentence) {
     var sentence = reuseSentence
-      ? (currentTask ? currentTask.sentence : buildSentence())
-      : (customSentence.value.trim() || buildSentence());
+      ? (currentTask ? currentTask.sentence : sentenceEditor.value.trim())
+      : sentenceEditor.value.trim();
 
     if (!sentence) {
-      showToast("請先設定至少一種皮克敏條件");
+      showToast("請先按「自動產生任務」產生敘述");
       return;
     }
 
@@ -195,7 +340,10 @@
 
     Sync.setValue("task", task).then(function () {
       showToast(reuseSentence ? "已開始下一輪！" : "任務已發布！");
-      if (!reuseSentence) customSentence.value = "";
+      if (!reuseSentence) {
+        pendingPicked = null;
+        sentenceEditor.value = "";
+      }
     });
   }
 
@@ -218,11 +366,11 @@
   });
 
   resetAllBtn.addEventListener("click", function () {
-    if (!confirm("確定要清空所有任務與回報紀錄嗎？此動作無法復原，通常只在活動前測試時使用。")) {
+    if (!confirm("確定要清空所有任務與回報紀錄嗎？此動作無法復原，通常只在活動前測試時使用。（不會清空卡片名單）")) {
       return;
     }
     Promise.all([Sync.clearList("log"), Sync.setValue("task", null)]).then(function () {
-      showToast("已清空所有資料");
+      showToast("已清空所有任務與回報資料");
     });
   });
 
@@ -260,6 +408,7 @@
       });
     }
     renderHistory();
+    renderRoster();
   }
 
   function renderHistory() {
@@ -310,10 +459,6 @@
   }
 
   // ---- init ----
-  renderTypeCountGrid();
-  conditionValueInput.disabled = state.condition === "none";
-  updatePreview();
-
   var mode = Sync.init();
   modeBadge.textContent = "連線模式：" + (mode === "firebase" ? "Firebase（跨裝置）" : "本機測試（同瀏覽器分頁）");
   modeBadge.className = "mode-badge " + mode;
@@ -325,5 +470,9 @@
   Sync.onList("log", function (arr) {
     logList = arr;
     render();
+  });
+  Sync.onList("roster", function (arr) {
+    roster = arr;
+    renderRoster();
   });
 })();
