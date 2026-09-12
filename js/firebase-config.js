@@ -10,11 +10,11 @@
 // 在還沒填之前（維持 "YOUR_API_KEY"），程式會自動切換成「本機測試模式」，
 // 只能在同一台電腦、同一個瀏覽器的不同分頁之間同步，方便你先測試介面。
 window.firebaseConfig = {
-  apiKey: "YOUR_API_KEY",
-  authDomain: "YOUR_PROJECT.firebaseapp.com",
-  databaseURL: "https://YOUR_PROJECT-default-rtdb.asia-southeast1.firebasedatabase.app",
-  projectId: "YOUR_PROJECT",
-  storageBucket: "YOUR_PROJECT.appspot.com",
-  messagingSenderId: "000000000000",
-  appId: "1:000000000000:web:xxxxxxxxxxxxxxxxxxxxxx"
+  apiKey: "AIzaSyCQz2JL8F9vhMkm2CCWQ6oEEvDO0HGG3Mg",
+  authDomain: "pikmin-ecebe.firebaseapp.com",
+  databaseURL: "https://pikmin-ecebe-default-rtdb.asia-southeast1.firebasedatabase.app",
+  projectId: "pikmin-ecebe",
+  storageBucket: "pikmin-ecebe.firebasestorage.app",
+  messagingSenderId: "922799348290",
+  appId: "1:922799348290:web:257c19cc52cad38f6cabdb"
 };
