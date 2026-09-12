@@ -123,23 +123,30 @@
   });
 
   clearRosterBtn.addEventListener("click", function () {
-    if (!confirm("確定要清空整份卡片名單嗎？（不會影響已經回報過的紀錄）")) return;
+    if (!confirm("確定要清空這裡手動新增的卡片嗎？（不會影響報到端已經登記的卡片）")) return;
     Sync.clearList("roster").then(function () {
       showToast("已清空卡片名單");
     });
   });
 
   function renderRoster() {
-    var total = roster.length;
+    var checkinEntries = logList.filter(function (e) {
+      return e.roundId === "none";
+    });
     var byType = {};
     roster.forEach(function (c) {
       byType[c.typeId] = (byType[c.typeId] || 0) + 1;
     });
+    checkinEntries.forEach(function (e) {
+      byType[e.typeId] = (byType[e.typeId] || 0) + 1;
+    });
+    var total = roster.length + checkinEntries.length;
 
     rosterSummary.innerHTML = "";
     var totalSpan = document.createElement("span");
     totalSpan.style.fontWeight = "700";
-    totalSpan.textContent = "總共 " + total + " 張卡片：";
+    totalSpan.textContent =
+      "目前卡池共 " + total + " 張（手動登錄 " + roster.length + " ＋報到登記 " + checkinEntries.length + "）：";
     rosterSummary.appendChild(totalSpan);
     window.PIKMIN_TYPES.forEach(function (t) {
       if (!byType[t.id]) return;
@@ -152,7 +159,8 @@
     });
 
     if (roster.length === 0) {
-      rosterList.innerHTML = '<p style="color:var(--muted);">尚未登錄任何卡片</p>';
+      rosterList.innerHTML =
+        '<p style="color:var(--muted);">尚未手動登錄卡片（報到端已經登記的卡片一樣算在卡池裡，只是不會列在這份可刪除清單）</p>';
       return;
     }
     rosterList.innerHTML = "";
@@ -218,20 +226,26 @@
   };
 
   // ---- 依剩餘卡片自動出題 ----
+  // 卡池 = 手動登錄的名單 ＋ 報到端登記的張數（roundId === "none"）
+  //       － 已經在正式任務輪次中回報掉的張數（roundId !== "none"）
   function buildAvailablePool() {
-    var usedCount = {};
-    logList.forEach(function (e) {
-      var k = cardKey(e.typeId, e.number);
-      usedCount[k] = (usedCount[k] || 0) + 1;
-    });
-    var rosterCount = {};
+    var inventoryCount = {};
     roster.forEach(function (c) {
       var k = cardKey(c.typeId, c.number);
-      rosterCount[k] = (rosterCount[k] || 0) + 1;
+      inventoryCount[k] = (inventoryCount[k] || 0) + 1;
+    });
+    var usedInRoundCount = {};
+    logList.forEach(function (e) {
+      var k = cardKey(e.typeId, e.number);
+      if (e.roundId === "none") {
+        inventoryCount[k] = (inventoryCount[k] || 0) + 1;
+      } else {
+        usedInRoundCount[k] = (usedInRoundCount[k] || 0) + 1;
+      }
     });
     var pool = [];
-    Object.keys(rosterCount).forEach(function (k) {
-      var remain = rosterCount[k] - (usedCount[k] || 0);
+    Object.keys(inventoryCount).forEach(function (k) {
+      var remain = inventoryCount[k] - (usedInRoundCount[k] || 0);
       var lastUnderscore = k.lastIndexOf("_");
       var typeId = k.slice(0, lastUnderscore);
       var number = parseInt(k.slice(lastUnderscore + 1), 10);
@@ -366,7 +380,7 @@
   });
 
   resetAllBtn.addEventListener("click", function () {
-    if (!confirm("確定要清空所有任務與回報紀錄嗎？此動作無法復原，通常只在活動前測試時使用。（不會清空卡片名單）")) {
+    if (!confirm("確定要清空所有任務與回報紀錄嗎？此動作無法復原，會連報到端已經登記的卡片一起清空，通常只在活動前測試時使用。")) {
       return;
     }
     Promise.all([Sync.clearList("log"), Sync.setValue("task", null)]).then(function () {
@@ -431,14 +445,15 @@
       var entries = byRound[roundId];
       var div = document.createElement("div");
       div.className = "history-round";
+      var isCheckin = roundId === "none";
       var sentenceDiv = document.createElement("div");
       sentenceDiv.className = "sentence";
-      sentenceDiv.textContent = entries[0].sentence || "(無敘述)";
+      sentenceDiv.textContent = isCheckin ? "📋 報到登記（尚未出題時登記的卡片）" : (entries[0].sentence || "(無敘述)");
       var metaDiv = document.createElement("div");
       metaDiv.className = "meta";
       var firstTime = new Date(entries[0].timestamp);
       metaDiv.textContent =
-        firstTime.toLocaleTimeString() + " · 共 " + entries.length + " 人";
+        firstTime.toLocaleTimeString() + " · 共 " + entries.length + (isCheckin ? " 張卡" : " 人");
       var cardsDiv = document.createElement("div");
       cardsDiv.className = "round-card-list";
       cardsDiv.style.justifyContent = "flex-start";

@@ -10,16 +10,18 @@
 
 <main>
   <section class="panel">
-    <h2>目前召集任務</h2>
+    <h2>目前狀態</h2>
     <div class="round-sentence" id="roundSentence" style="font-size:1.2rem;">尚未發布任務</div>
     <div class="round-progress-text" id="roundProgressText">0 / 0 人已上台</div>
   </section>
 
   <section class="panel">
-    <h2>點選同學的皮克敏卡片來回報</h2>
+    <h2>點選同學的皮克敏卡片</h2>
     <p style="color:var(--muted); font-size:0.9rem;">
-      確認新生的身分卡符合目前任務條件後，點下對應「種類＋數字」的按鍵即可回報給主持端，
-      按過的卡片會變灰，避免重複回報同一張卡。
+      <strong>還沒發布任務時</strong>：新生報到、拿到身分卡後，直接點下對應「種類＋數字」的按鍵登記即可，
+      同一張卡可以重複點（代表好幾位新生都拿到那張卡），這些登記會自動變成主持端出題用的卡池。<br />
+      <strong>任務發布後</strong>：確認新生的身分卡符合目前任務條件，點下對應按鍵回報給主持端，
+      按到剩餘 0 張時該按鍵才會變灰。
     </p>
     <div class="pikmin-grid" id="pikminGrid"></div>
     <div class="btn-row">

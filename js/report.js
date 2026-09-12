@@ -1,9 +1,14 @@
 (function () {
+  // 兩種模式：
+  // 1. 尚未發布任務 = 報到登記模式：按鍵永遠可以點，每點一次＝多登記一張這種卡
+  //    （之後主持端「自動產生任務」就會用這些登記數量當卡池）
+  // 2. 已發布任務 = 任務回報模式：按鍵依「剩餘張數」決定能不能點，
+  //    剩餘張數＝（手動名單＋報到登記的張數）－（已經在任務輪次中回報掉的張數）
   var currentTask = null;
   var logList = [];
   var roster = [];
-  var rosterCount = {};
-  var usedCount = {};
+  var inventoryCount = {}; // 手動名單 + 報到登記（roundId === "none"）
+  var usedInRoundCount = {}; // 已在正式任務輪次中回報掉的張數（roundId !== "none"）
 
   var pikminGrid = document.getElementById("pikminGrid");
   var roundSentence = document.getElementById("roundSentence");
@@ -25,12 +30,16 @@
     return typeId + "_" + number;
   }
 
-  function remainingOf(typeId, number) {
-    var key = cardKey(typeId, number);
-    var total = rosterCount[key] || 0;
-    var used = usedCount[key] || 0;
+  function isCheckinMode() {
+    return !currentTask;
+  }
+
+  // 任務回報模式下，這張卡還剩幾張沒被叫過
+  function remainingOf(key) {
+    var total = inventoryCount[key] || 0;
+    var used = usedInRoundCount[key] || 0;
     if (total === 0) {
-      // 名單裡沒有登錄這張卡：仍然可以選，當成只有 1 張、按過就用完
+      // 這張卡沒有在卡池裡登記過（可能報到時漏登），仍然可以選，當成 1 張、按過就用完
       return used > 0 ? 0 : 1;
     }
     return Math.max(0, total - used);
@@ -48,7 +57,7 @@
       legend.appendChild(span);
     });
     var note = document.createElement("span");
-    note.textContent = "按鍵右上角的數字＝這張卡在名單裡還剩幾張沒被叫過（沒登錄名單的卡預設也能選，按過就變灰）";
+    note.id = "legendNote";
     legend.appendChild(note);
   }
 
@@ -90,7 +99,7 @@
           btn.appendChild(badge);
 
           btn.addEventListener("click", function () {
-            handleCardClick(t.id, num, btn);
+            handleCardClick(t.id, num);
           });
           btnWrap.appendChild(btn);
         })(n);
@@ -100,39 +109,56 @@
       row.appendChild(btnWrap);
       pikminGrid.appendChild(row);
     });
-    applyUsedState();
+    applyButtonState();
   }
 
-  function applyUsedState() {
+  function applyButtonState() {
+    var checkin = isCheckinMode();
     var buttons = pikminGrid.querySelectorAll(".pikmin-card-btn");
     buttons.forEach(function (btn) {
       var key = btn.dataset.key;
-      var lastUnderscore = key.lastIndexOf("_");
-      var typeId = key.slice(0, lastUnderscore);
-      var number = parseInt(key.slice(lastUnderscore + 1), 10);
-      var total = rosterCount[key] || 0;
-      var remain = remainingOf(typeId, number);
       var badge = btn.querySelector(".remain-badge");
-
       btn.classList.remove("used");
-      if (remain <= 0) {
-        btn.classList.add("used");
-        btn.disabled = true;
-        badge.textContent = "";
-      } else {
+
+      if (checkin) {
+        // 報到登記模式：永遠可以點，右上角顯示目前已登記幾張
         btn.disabled = false;
-        badge.textContent = total > 1 ? "×" + remain : "";
+        var count = inventoryCount[key] || 0;
+        badge.textContent = count > 0 ? "×" + count : "";
+      } else {
+        var remain = remainingOf(key);
+        if (remain <= 0) {
+          btn.classList.add("used");
+          btn.disabled = true;
+          badge.textContent = "";
+        } else {
+          btn.disabled = false;
+          badge.textContent = remain > 1 ? "×" + remain : "";
+        }
       }
     });
+
+    var note = document.getElementById("legendNote");
+    if (note) {
+      note.textContent = checkin
+        ? "目前是報到登記模式：點一次＝多登記一張這種卡，之後主持端出題會用這些卡"
+        : "按鍵右上角＝這張卡還剩幾張沒被叫過（含報到時登記的張數）";
+    }
   }
 
-  function handleCardClick(typeId, number, btn) {
-    if (remainingOf(typeId, number) <= 0) return;
-
-    // 樂觀更新：先在畫面上扣一張，避免重複點擊
+  function handleCardClick(typeId, number) {
     var key = cardKey(typeId, number);
-    usedCount[key] = (usedCount[key] || 0) + 1;
-    applyUsedState();
+    var checkin = isCheckinMode();
+
+    if (!checkin && remainingOf(key) <= 0) return;
+
+    // 樂觀更新，避免重複點擊造成的延遲感
+    if (checkin) {
+      inventoryCount[key] = (inventoryCount[key] || 0) + 1;
+    } else {
+      usedInRoundCount[key] = (usedInRoundCount[key] || 0) + 1;
+    }
+    applyButtonState();
 
     var entry = {
       typeId: typeId,
@@ -142,7 +168,7 @@
       timestamp: Date.now()
     };
     Sync.pushItem("log", entry).then(function () {
-      showToast("已回報：" + typeNameOf(typeId) + " " + number + " 號");
+      showToast((checkin ? "已登記：" : "已回報：") + typeNameOf(typeId) + " " + number + " 號");
     });
   }
 
@@ -162,22 +188,26 @@
   });
 
   function recompute() {
-    rosterCount = {};
+    inventoryCount = {};
     roster.forEach(function (c) {
       var k = cardKey(c.typeId, c.number);
-      rosterCount[k] = (rosterCount[k] || 0) + 1;
+      inventoryCount[k] = (inventoryCount[k] || 0) + 1;
     });
-    usedCount = {};
+    usedInRoundCount = {};
     logList.forEach(function (e) {
       var k = cardKey(e.typeId, e.number);
-      usedCount[k] = (usedCount[k] || 0) + 1;
+      if (e.roundId === "none") {
+        inventoryCount[k] = (inventoryCount[k] || 0) + 1;
+      } else {
+        usedInRoundCount[k] = (usedInRoundCount[k] || 0) + 1;
+      }
     });
   }
 
   function render() {
     if (!currentTask) {
-      roundSentence.textContent = "尚未發布任務";
-      roundProgressText.textContent = "0 / 0 人已上台";
+      roundSentence.textContent = "📋 報到登記模式（尚未發布任務）";
+      roundProgressText.textContent = "點擊卡片即可登記，之後主持端會自動出題";
     } else {
       roundSentence.textContent = currentTask.sentence;
       var thisRound = logList.filter(function (e) {
@@ -186,7 +216,7 @@
       roundProgressText.textContent = thisRound.length + " / " + currentTask.maxPeople + " 人已上台";
     }
     recompute();
-    applyUsedState();
+    applyButtonState();
   }
 
   // ---- init ----
