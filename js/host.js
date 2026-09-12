@@ -35,6 +35,7 @@
   var roundProgressBar = document.getElementById("roundProgressBar");
   var roundProgressText = document.getElementById("roundProgressText");
   var roundCardList = document.getElementById("roundCardList");
+  var markCollectedBtn = document.getElementById("markCollectedBtn");
   var historyList = document.getElementById("historyList");
   var modeBadge = document.getElementById("modeBadge");
   var toast = document.getElementById("toast");
@@ -349,7 +350,10 @@
       sentence: sentence,
       maxPeople: state.maxPeople,
       roundId: makeRoundId(),
-      createdAt: Date.now()
+      createdAt: Date.now(),
+      // 只有「這次剛按過自動產生」才附上具體挑到的卡片，沿用敘述開下一輪不附帶
+      pickedCards: !reuseSentence && pendingPicked ? pendingPicked : null,
+      pickedMarked: false
     };
 
     Sync.setValue("task", task).then(function () {
@@ -379,6 +383,37 @@
     });
   });
 
+  markCollectedBtn.addEventListener("click", function () {
+    if (!currentTask || !currentTask.pickedCards || currentTask.pickedCards.length === 0) {
+      showToast("這一輪沒有自動產生的卡片組合可以標記");
+      return;
+    }
+    if (currentTask.pickedMarked) {
+      showToast("這一輪已經標記過了");
+      return;
+    }
+    var roundId = currentTask.roundId;
+    var sentence = currentTask.sentence;
+    var cards = currentTask.pickedCards;
+    Promise.all(
+      cards.map(function (c) {
+        return Sync.pushItem("log", {
+          typeId: c.typeId,
+          number: c.number,
+          roundId: roundId,
+          sentence: sentence,
+          timestamp: Date.now()
+        });
+      })
+    )
+      .then(function () {
+        return Sync.setValue("task", Object.assign({}, currentTask, { pickedMarked: true }));
+      })
+      .then(function () {
+        showToast("已標記 " + cards.length + " 張卡片收回，下次出題不會再挑到");
+      });
+  });
+
   resetAllBtn.addEventListener("click", function () {
     if (!confirm("確定要清空所有任務與回報紀錄嗎？此動作無法復原，會連報到端已經登記的卡片一起清空，通常只在活動前測試時使用。")) {
       return;
@@ -400,6 +435,8 @@
       roundProgressBar.style.width = "0%";
       roundProgressText.textContent = "0 / 0 人已上台";
       roundCardList.innerHTML = "";
+      markCollectedBtn.disabled = true;
+      markCollectedBtn.textContent = "🗑️ 標記本輪卡片已收回（避免下次出題重複挑到）";
     } else {
       roundSentence.textContent = currentTask.sentence;
       var thisRound = logList.filter(function (e) {
@@ -420,6 +457,22 @@
         chip.innerHTML = '<span class="dot"></span>' + (t ? t.name : e.typeId) + " " + e.number;
         roundCardList.appendChild(chip);
       });
+
+      var hasPicked = currentTask.pickedCards && currentTask.pickedCards.length > 0;
+      if (!hasPicked) {
+        markCollectedBtn.disabled = true;
+        markCollectedBtn.textContent = "🗑️ 這一輪不是自動產生的，沒有可標記的卡片";
+      } else if (currentTask.pickedMarked) {
+        markCollectedBtn.disabled = true;
+        markCollectedBtn.textContent = "✅ 這一輪的卡片已經標記收回過了";
+      } else if (thisRound.length > 0) {
+        markCollectedBtn.disabled = true;
+        markCollectedBtn.textContent = "🗑️ 報到端已經逐一回報過，不用再整批標記";
+      } else {
+        markCollectedBtn.disabled = false;
+        markCollectedBtn.textContent =
+          "🗑️ 標記這 " + currentTask.pickedCards.length + " 張卡片已收回（避免下次出題重複挑到）";
+      }
     }
     renderHistory();
     renderRoster();
