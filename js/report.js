@@ -29,6 +29,10 @@
     var key = cardKey(typeId, number);
     var total = rosterCount[key] || 0;
     var used = usedCount[key] || 0;
+    if (total === 0) {
+      // 名單裡沒有登錄這張卡：仍然可以選，當成只有 1 張、按過就用完
+      return used > 0 ? 0 : 1;
+    }
     return Math.max(0, total - used);
   }
 
@@ -44,7 +48,7 @@
       legend.appendChild(span);
     });
     var note = document.createElement("span");
-    note.textContent = "按鍵右上角的數字＝這張卡還剩幾張沒被叫過；淺色虛線＝名單裡沒有登錄這張卡";
+    note.textContent = "按鍵右上角的數字＝這張卡在名單裡還剩幾張沒被叫過（沒登錄名單的卡預設也能選，按過就變灰）";
     legend.appendChild(note);
   }
 
@@ -110,12 +114,8 @@
       var remain = remainingOf(typeId, number);
       var badge = btn.querySelector(".remain-badge");
 
-      btn.classList.remove("used", "not-in-roster");
-      if (total === 0) {
-        btn.classList.add("not-in-roster");
-        btn.disabled = true;
-        badge.textContent = "";
-      } else if (remain <= 0) {
+      btn.classList.remove("used");
+      if (remain <= 0) {
         btn.classList.add("used");
         btn.disabled = true;
         badge.textContent = "";
