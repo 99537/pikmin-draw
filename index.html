@@ -1,0 +1,44 @@
+<title>皮克敏抽直屬</title>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<link rel="stylesheet" href="css/style.css" />
+
+<header class="topbar">
+  <h1>🌱 皮克敏抽直屬活動系統</h1>
+</header>
+
+<main>
+  <div class="panel">
+    <h2>使用說明</h2>
+    <p>
+      本系統對應企畫書中的「召集任務」環節：主持端負責出題並顯示題目與名額進度，
+      報到處的工作人員在確認新生的皮克敏身分卡符合條件後，點選對應的按鍵回報，
+      該按鍵會立即變灰、並同步顯示在主持端畫面上。
+    </p>
+    <p>兩端請分別在不同裝置（例如主持端用連接投影機的筆電、報到端用平板或手機）開啟對應的頁面。</p>
+  </div>
+
+  <div class="landing-grid">
+    <a class="big-link-card" href="host.html">
+      <span class="emoji">🎤</span>
+      <h2>主持端</h2>
+      <p>設定並發布召集任務、顯示本輪進度與歷史紀錄</p>
+    </a>
+    <a class="big-link-card" href="report.html">
+      <span class="emoji">📋</span>
+      <h2>報到回報端</h2>
+      <p>報到處人員專用，一鍵回報符合條件的皮克敏卡片</p>
+    </a>
+  </div>
+
+  <div class="panel">
+    <h2>設定提醒</h2>
+    <p>
+      目前若尚未設定 Firebase，系統會自動使用「本機測試模式」，只能在同一台電腦的不同分頁間同步，
+      方便先測試操作流程。正式活動當天要讓不同裝置互通，請先依照
+      <a href="README.md">README</a> 設定 <code>js/firebase-config.js</code>。
+    </p>
+  </div>
+</main>
+
+<footer>皮克敏抽直屬活動系統 · 依企畫書「召集任務」流程設計</footer>
