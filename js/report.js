@@ -35,13 +35,10 @@
   }
 
   // 任務回報模式下，這張卡還剩幾張沒被叫過
+  // 沒有在報到時登記過的卡（total === 0）代表根本沒有學生拿到這張卡，維持鎖住不能點。
   function remainingOf(key) {
     var total = inventoryCount[key] || 0;
     var used = usedInRoundCount[key] || 0;
-    if (total === 0) {
-      // 這張卡沒有在卡池裡登記過（可能報到時漏登），仍然可以選，當成 1 張、按過就用完
-      return used > 0 ? 0 : 1;
-    }
     return Math.max(0, total - used);
   }
 
